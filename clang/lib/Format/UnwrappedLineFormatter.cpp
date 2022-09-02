@@ -905,8 +905,8 @@ static void markFinalized(FormatToken *Tok) {
 }
 
 #ifndef NDEBUG
-static void printLineState(const LineState &State) {
-  llvm::dbgs() << "State: ";
+static void printLineState(unsigned Count, const LineState &State) {
+  llvm::dbgs() << "State: " << Count << " ";
   for (const ParenState &P : State.Stack) {
     llvm::dbgs() << (P.Tok ? P.Tok->TokenText : "F") << "|" << P.Indent << "|"
                  << P.LastSpace << "|" << P.NestedBlockIndent << " ";
@@ -1122,8 +1122,9 @@ private:
   /// An edge in the solution space from \c Previous->State to \c State,
   /// inserting a newline dependent on the \c NewLine.
   struct StateNode {
-    StateNode(const LineState &State, bool NewLine, StateNode *Previous)
-        : State(State), NewLine(NewLine), Previous(Previous) {}
+    StateNode(unsigned Count, const LineState &State, bool NewLine, StateNode *Previous)
+        : Count(Count), State(State), NewLine(NewLine), Previous(Previous) {}
+    unsigned Count;
     LineState State;
     bool NewLine;
     StateNode *Previous;
@@ -1156,7 +1157,7 @@ private:
 
     // Insert start element into queue.
     StateNode *RootNode =
-        new (Allocator.Allocate()) StateNode(InitialState, false, nullptr);
+        new (Allocator.Allocate()) StateNode(Count, InitialState, false, nullptr);
     Queue.push(QueueItem(OrderedPenalty(0, Count), RootNode));
     ++Count;
 
@@ -1219,17 +1220,51 @@ private:
   void addNextStateToQueue(unsigned Penalty, StateNode *PreviousNode,
                            bool NewLine, unsigned *Count, QueueType *Queue) {
     if (NewLine && !Indenter->canBreak(PreviousNode->State))
+    {
+      LLVM_DEBUG({
+        const FormatToken &Current = *PreviousNode->State.NextToken;
+        const FormatToken &Previous = *Current.Previous;
+        llvm::dbgs() << "\n" << "State " << (*Count)++ << " newline and cannot break " << Previous.TokenText << " " << Current.TokenText << "\n";
+      });
       return;
+    }
     if (!NewLine && Indenter->mustBreak(PreviousNode->State))
+    {
+      LLVM_DEBUG({
+        const FormatToken &Current = *PreviousNode->State.NextToken;
+        const FormatToken &Previous = *Current.Previous;
+        llvm::dbgs() << "\n" << "State " << (*Count)++ << " !newline and must break " << Previous.TokenText << " " << Current.TokenText << "\n";
+      });
       return;
+    }
 
     StateNode *Node = new (Allocator.Allocate())
-        StateNode(PreviousNode->State, NewLine, PreviousNode);
+        StateNode(*Count, PreviousNode->State, NewLine, PreviousNode);
     if (!formatChildren(Node->State, NewLine, /*DryRun=*/true, Penalty))
+    {
+      LLVM_DEBUG({ llvm::dbgs() << (*Count)++ << " !formatChildren following " << PreviousNode->State.Stack.back().Tok->TokenText << "\n"; });
       return;
+    }
 
-    Penalty += Indenter->addTokenToState(Node->State, NewLine, true);
+    auto DeltaPenalty = Indenter->addTokenToState(Node->State, NewLine, true);
+    Penalty += DeltaPenalty;
 
+    LLVM_DEBUG({
+      llvm::SmallVector<StateNode *> Path;
+      for (StateNode *N = Node; N->Previous; N = N->Previous) {
+        Path.push_back(N);
+      }
+      llvm::dbgs() << "\n";
+      for (const auto &N : llvm::reverse(Path)) {
+        if (N->NewLine) {
+          llvm::dbgs() << "<newline>";
+          if ( &N == &Path.front() ) { llvm::dbgs() << " penalty " << DeltaPenalty; }
+          llvm::dbgs() << "\n";
+        }
+        printLineState(N->Previous->Count, N->Previous->State);
+      }
+      llvm::dbgs() << "State " << *Count << " penalty " << Penalty << "\n";
+    });
     Queue->push(QueueItem(OrderedPenalty(Penalty, *Count), Node));
     ++(*Count);
   }
@@ -1249,7 +1284,7 @@ private:
       Penalty += Indenter->addTokenToState(State, Node->NewLine, false);
 
       LLVM_DEBUG({
-        printLineState(Node->Previous->State);
+        printLineState(Node->Previous->Count, Node->Previous->State);
         if (Node->NewLine) {
           llvm::dbgs() << "Penalty for placing "
                        << Node->Previous->State.NextToken->Tok.getName()
