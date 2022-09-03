@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "BreakableToken.h"
-#include "ContinuationIndenter.h"
+#include "LineState.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Format/Format.h"
 #include "llvm/ADT/STLExtras.h"

@@ -15,6 +15,7 @@
 #include "BreakableToken.h"
 #include "FormatInternal.h"
 #include "FormatToken.h"
+#include "LineState.h"
 #include "WhitespaceManager.h"
 #include "clang/Basic/OperatorPrecedence.h"
 #include "clang/Basic/SourceManager.h"
@@ -222,13 +223,13 @@ RawStringFormatStyleManager::getEnclosingFunctionStyle(
   return It->second;
 }
 
-ContinuationIndenter::ContinuationIndenter(const FormatStyle &Style,
-                                           const AdditionalKeywords &Keywords,
+ContinuationIndenter::ContinuationIndenter(const LanguageFormatStyle &LanguageStyle,
                                            const SourceManager &SourceMgr,
                                            WhitespaceManager &Whitespaces,
                                            encoding::Encoding Encoding,
                                            bool BinPackInconclusiveFunctions)
-    : Style(Style), Keywords(Keywords), SourceMgr(SourceMgr),
+    : LanguageStyle(LanguageStyle), Style(LanguageStyle.Style),
+      SourceMgr(SourceMgr),
       Whitespaces(Whitespaces), Encoding(Encoding),
       BinPackInconclusiveFunctions(BinPackInconclusiveFunctions),
       CommentPragmasRegex(Style.CommentPragmas), RawStringFormats(Style) {}
@@ -276,7 +277,7 @@ LineState ContinuationIndenter::getInitialState(unsigned FirstIndent,
   return State;
 }
 
-bool ContinuationIndenter::canBreak(const LineState &State) {
+bool LanguageFormatStyle::canBreak(const LineState &State) const {
   const FormatToken &Current = *State.NextToken;
   const FormatToken &Previous = *Current.Previous;
   const auto &CurrentState = State.Stack.back();
@@ -334,7 +335,7 @@ bool ContinuationIndenter::canBreak(const LineState &State) {
   return !CurrentState.NoLineBreak;
 }
 
-bool ContinuationIndenter::mustBreak(const LineState &State) {
+bool LanguageFormatStyle::mustBreak(const LineState &State) const {
   const FormatToken &Current = *State.NextToken;
   const FormatToken &Previous = *Current.Previous;
   const auto &CurrentState = State.Stack.back();
@@ -896,7 +897,7 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
   if (!Current.is(TT_LambdaArrow) &&
       (!Style.isJavaScript() || Current.NestingLevel != 0 ||
        !PreviousNonComment || !PreviousNonComment->is(tok::equal) ||
-       !Current.isOneOf(Keywords.kw_async, Keywords.kw_function))) {
+       !Current.isOneOf(LanguageStyle.Keywords.kw_async, LanguageStyle.Keywords.kw_function))) {
     CurrentState.NestedBlockIndent = State.Column;
   }
 
@@ -1061,7 +1062,7 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
   return Penalty;
 }
 
-unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
+unsigned LanguageFormatStyle::getNewLineColumn(const LineState &State) const {
   if (!State.NextToken || !State.NextToken->Previous)
     return 0;
 
@@ -2051,7 +2052,7 @@ static StringRef getEnclosingFunctionName(const FormatToken &Current) {
 
 llvm::Optional<FormatStyle>
 ContinuationIndenter::getRawStringStyle(const FormatToken &Current,
-                                        const LineState &State) {
+                                        const LineState &State) const {
   if (!Current.isStringLiteral())
     return None;
   auto Delimiter = getRawStringDelimiter(Current.TokenText);
@@ -2070,7 +2071,7 @@ ContinuationIndenter::getRawStringStyle(const FormatToken &Current,
 
 std::unique_ptr<BreakableToken>
 ContinuationIndenter::createBreakableToken(const FormatToken &Current,
-                                           LineState &State, bool AllowBreak) {
+                                           LineState &State, bool AllowBreak) const {
   unsigned StartColumn = State.Column - Current.ColumnWidth;
   if (Current.isStringLiteral()) {
     // FIXME: String literal breaking is currently disabled for C#, Java, Json
@@ -2115,7 +2116,7 @@ ContinuationIndenter::createBreakableToken(const FormatToken &Current,
       // only if certain other formatting decisions have been taken. The
       // UnbreakableTailLength of Current is an overapproximation is that case
       // and we need to be correct here.
-      unsigned UnbreakableTailLength = (State.NextToken && canBreak(State))
+      unsigned UnbreakableTailLength = (State.NextToken && LanguageStyle.canBreak(State))
                                            ? 0
                                            : Current.UnbreakableTailLength;
       return std::make_unique<BreakableStringLiteral>(
@@ -2536,12 +2537,12 @@ ContinuationIndenter::breakProtrudingToken(const FormatToken &Current,
   return {Penalty, Exceeded};
 }
 
-unsigned ContinuationIndenter::getColumnLimit(const LineState &State) const {
+unsigned LanguageFormatStyle::getColumnLimit(const LineState &State) const {
   // In preprocessor directives reserve two chars for trailing " \"
   return Style.ColumnLimit - (State.Line->InPPDirective ? 2 : 0);
 }
 
-bool ContinuationIndenter::nextIsMultilineString(const LineState &State) {
+bool LanguageFormatStyle::nextIsMultilineString(const LineState &State) const {
   const FormatToken &Current = *State.NextToken;
   if (!Current.isStringLiteral() || Current.is(TT_ImplicitStringLiteral))
     return false;
