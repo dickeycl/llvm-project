@@ -47,14 +47,12 @@ struct RawStringFormatStyleManager {
 };
 
 /* FormatStyle for a specific language, as specified by additional keywords */
-struct LanguageFormatStyle
-{
+struct LanguageFormatStyle {
   const FormatStyle &Style;
   const AdditionalKeywords &Keywords;
-  LanguageFormatStyle(const FormatStyle &Style, const AdditionalKeywords &Keywords)
-    : Style(Style)
-    , Keywords(Keywords)
-  {}
+  LanguageFormatStyle(const FormatStyle &Style,
+                      const AdditionalKeywords &Keywords)
+      : Style(Style), Keywords(Keywords) {}
 
   /// Returns \c true, if a line break after \p State is allowed.
   bool canBreak(const LineState &State) const;
@@ -95,12 +93,17 @@ public:
 
   // FIXME: canBreak and mustBreak aren't strictly indentation-related.
   // Implementation moved to LanguageFormatStyle, but as they are public
-  // functions UnwrappedLineFormatter expects to find them in ContinuationIndenter
+  // functions UnwrappedLineFormatter expects to find them in
+  // ContinuationIndenter
   /// Returns \c true, if a line break after \p State is allowed.
-  bool canBreak(const LineState &State) const { return LanguageStyle.canBreak(State); };
+  bool canBreak(const LineState &State) const {
+    return LanguageStyle.canBreak(State);
+  };
 
   /// Returns \c true, if a line break after \p State is mandatory.
-  bool mustBreak(const LineState &State) const { return LanguageStyle.mustBreak(State); };
+  bool mustBreak(const LineState &State) const {
+    return LanguageStyle.mustBreak(State);
+  };
 
   /// Appends the next token to \p State and updates information
   /// necessary for indentation.
@@ -115,7 +118,9 @@ public:
 
   /// Get the column limit for this line. This is the style's column
   /// limit, potentially reduced for preprocessor definitions.
-  unsigned getColumnLimit(const LineState &State) const { return LanguageStyle.getColumnLimit(State); }
+  unsigned getColumnLimit(const LineState &State) const {
+    return LanguageStyle.getColumnLimit(State);
+  }
 
 private:
   /// Mark the next token as consumed in \p State and modify its stacks
@@ -175,10 +180,10 @@ private:
                                                  bool AllowBreak, bool DryRun,
                                                  bool Strict);
 
-/* Future candidate for LanugageFormatStyle?
- *    Uses WhitespacesManager, but read-only.
- *    Uses CommentPragmasRegex, but read-only.
- */
+  /* Future candidate for LanugageFormatStyle?
+   *    Uses WhitespacesManager, but read-only.
+   *    Uses CommentPragmasRegex, but read-only.
+   */
   /// Returns the \c BreakableToken starting at \p Current, or nullptr
   /// if the current token cannot be broken.
   std::unique_ptr<BreakableToken>
@@ -204,8 +209,13 @@ private:
   /// \c Replacement.
   unsigned addTokenOnNewLine(LineState &State, bool DryRun);
 
+  /// getter for the FormatStyle
+  const FormatStyle &getStyle() const { return LanguageStyle.Style; }
+
   /// Calculate the new column for a line wrap before the next token.
-  unsigned getNewLineColumn(const LineState &State) const { return LanguageStyle.getNewLineColumn(State); }
+  unsigned getNewLineColumn(const LineState &State) const {
+    return LanguageStyle.getNewLineColumn(State);
+  }
 
   /// Adds a multiline token to the \p State.
   ///
@@ -215,7 +225,6 @@ private:
   unsigned addMultilineToken(const FormatToken &Current, LineState &State);
 
   const LanguageFormatStyle &LanguageStyle;
-  const FormatStyle &Style;
   const SourceManager &SourceMgr;
   WhitespaceManager &Whitespaces;
   encoding::Encoding Encoding;

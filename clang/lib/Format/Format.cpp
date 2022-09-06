@@ -2042,9 +2042,10 @@ public:
                   Env.getSourceManager().getBufferData(Env.getFileID()),
                   Style.UseCRLF)
             : Style.UseCRLF);
-    ContinuationIndenter Indenter(LanguageFormatStyle{Style, Tokens.getKeywords()},
-                                  Env.getSourceManager(), Whitespaces, Encoding,
-                                  BinPackInconclusiveFunctions);
+    ContinuationIndenter Indenter(
+        LanguageFormatStyle{Style, Tokens.getKeywords()},
+        Env.getSourceManager(), Whitespaces, Encoding,
+        BinPackInconclusiveFunctions);
     unsigned Penalty =
         UnwrappedLineFormatter(&Indenter, &Whitespaces, Style,
                                Tokens.getKeywords(), Env.getSourceManager(),

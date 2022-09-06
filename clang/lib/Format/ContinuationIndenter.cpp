@@ -223,21 +223,21 @@ RawStringFormatStyleManager::getEnclosingFunctionStyle(
   return It->second;
 }
 
-ContinuationIndenter::ContinuationIndenter(const LanguageFormatStyle &LanguageStyle,
-                                           const SourceManager &SourceMgr,
-                                           WhitespaceManager &Whitespaces,
-                                           encoding::Encoding Encoding,
-                                           bool BinPackInconclusiveFunctions)
-    : LanguageStyle(LanguageStyle), Style(LanguageStyle.Style),
-      SourceMgr(SourceMgr),
+ContinuationIndenter::ContinuationIndenter(
+    const LanguageFormatStyle &LanguageStyle, const SourceManager &SourceMgr,
+    WhitespaceManager &Whitespaces, encoding::Encoding Encoding,
+    bool BinPackInconclusiveFunctions)
+    : LanguageStyle(LanguageStyle), SourceMgr(SourceMgr),
       Whitespaces(Whitespaces), Encoding(Encoding),
       BinPackInconclusiveFunctions(BinPackInconclusiveFunctions),
-      CommentPragmasRegex(Style.CommentPragmas), RawStringFormats(Style) {}
+      CommentPragmasRegex(LanguageStyle.Style.CommentPragmas),
+      RawStringFormats(LanguageStyle.Style) {}
 
 LineState ContinuationIndenter::getInitialState(unsigned FirstIndent,
                                                 unsigned FirstStartColumn,
                                                 const AnnotatedLine *Line,
                                                 bool DryRun) {
+  const FormatStyle &Style = getStyle();
   LineState State;
   State.FirstIndent = FirstIndent;
   if (FirstStartColumn && Line->First->NewlinesBefore == 0)
@@ -633,6 +633,7 @@ void ContinuationIndenter::addTokenOnCurrentLine(LineState &State, bool DryRun,
   FormatToken &Current = *State.NextToken;
   assert(State.NextToken->Previous);
   const FormatToken &Previous = *State.NextToken->Previous;
+  const FormatStyle &Style = getStyle();
   auto &CurrentState = State.Stack.back();
 
   if (Current.is(tok::equal) &&
@@ -838,6 +839,7 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
   FormatToken &Current = *State.NextToken;
   assert(State.NextToken->Previous);
   const FormatToken &Previous = *State.NextToken->Previous;
+  const FormatStyle &Style = getStyle();
   auto &CurrentState = State.Stack.back();
 
   // Extra penalty that needs to be added because of the way certain line
@@ -897,7 +899,8 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
   if (!Current.is(TT_LambdaArrow) &&
       (!Style.isJavaScript() || Current.NestingLevel != 0 ||
        !PreviousNonComment || !PreviousNonComment->is(tok::equal) ||
-       !Current.isOneOf(LanguageStyle.Keywords.kw_async, LanguageStyle.Keywords.kw_function))) {
+       !Current.isOneOf(LanguageStyle.Keywords.kw_async,
+                        LanguageStyle.Keywords.kw_function))) {
     CurrentState.NestedBlockIndent = State.Column;
   }
 
@@ -1313,6 +1316,7 @@ static bool hasNestedBlockInlined(const FormatToken *Previous,
 unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
                                                     bool DryRun, bool Newline) {
   assert(State.Stack.size());
+  const FormatStyle &Style = getStyle();
   const FormatToken &Current = *State.NextToken;
   auto &CurrentState = State.Stack.back();
 
@@ -1477,6 +1481,7 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
   if (Current.FakeLParens.empty())
     return;
 
+  const FormatStyle &Style = getStyle();
   const FormatToken *Previous = Current.getPreviousNonComment();
 
   // Don't add extra indentation for the first fake parenthesis after
@@ -1571,6 +1576,7 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
 }
 
 void ContinuationIndenter::moveStatePastFakeRParens(LineState &State) {
+  const FormatStyle &Style = getStyle();
   for (unsigned i = 0, e = State.NextToken->FakeRParens; i != e; ++i) {
     unsigned VariablePos = State.Stack.back().VariablePos;
     if (State.Stack.size() == 1) {
@@ -1590,6 +1596,7 @@ void ContinuationIndenter::moveStatePastFakeRParens(LineState &State) {
 
 void ContinuationIndenter::moveStatePastScopeOpener(LineState &State,
                                                     bool Newline) {
+  const FormatStyle &Style = getStyle();
   const FormatToken &Current = *State.NextToken;
   if (!Current.opensScope())
     return;
@@ -1735,6 +1742,7 @@ void ContinuationIndenter::moveStatePastScopeOpener(LineState &State,
 }
 
 void ContinuationIndenter::moveStatePastScopeCloser(LineState &State) {
+  const FormatStyle &Style = getStyle();
   const FormatToken &Current = *State.NextToken;
   if (!Current.closesScope())
     return;
@@ -1785,6 +1793,7 @@ void ContinuationIndenter::moveStatePastScopeCloser(LineState &State) {
 }
 
 void ContinuationIndenter::moveStateToNewBlock(LineState &State) {
+  const FormatStyle &Style = getStyle();
   unsigned NestedBlockIndent = State.Stack.back().NestedBlockIndent;
   // ObjC block sometimes follow special indentation rules.
   unsigned NewIndent =
@@ -1815,6 +1824,7 @@ static unsigned getLastLineEndColumn(StringRef Text, unsigned StartColumn,
 unsigned ContinuationIndenter::reformatRawStringLiteral(
     const FormatToken &Current, LineState &State,
     const FormatStyle &RawStringStyle, bool DryRun, bool Newline) {
+  const FormatStyle &Style = getStyle();
   unsigned StartColumn = State.Column - Current.ColumnWidth;
   StringRef OldDelimiter = *getRawStringDelimiter(Current.TokenText);
   StringRef NewDelimiter =
@@ -1962,6 +1972,7 @@ unsigned ContinuationIndenter::reformatRawStringLiteral(
 
 unsigned ContinuationIndenter::addMultilineToken(const FormatToken &Current,
                                                  LineState &State) {
+  const FormatStyle &Style = getStyle();
   // Break before further function parameters on all levels.
   for (ParenState &Paren : State.Stack)
     Paren.BreakBeforeParameter = true;
@@ -1979,6 +1990,7 @@ unsigned ContinuationIndenter::addMultilineToken(const FormatToken &Current,
 unsigned ContinuationIndenter::handleEndOfLine(const FormatToken &Current,
                                                LineState &State, bool DryRun,
                                                bool AllowBreak, bool Newline) {
+  const FormatStyle &Style = getStyle();
   unsigned Penalty = 0;
   // Compute the raw string style to use in case this is a raw string literal
   // that can be reformatted.
@@ -2069,9 +2081,9 @@ ContinuationIndenter::getRawStringStyle(const FormatToken &Current,
   return RawStringStyle;
 }
 
-std::unique_ptr<BreakableToken>
-ContinuationIndenter::createBreakableToken(const FormatToken &Current,
-                                           LineState &State, bool AllowBreak) const {
+std::unique_ptr<BreakableToken> ContinuationIndenter::createBreakableToken(
+    const FormatToken &Current, LineState &State, bool AllowBreak) const {
+  const FormatStyle &Style = getStyle();
   unsigned StartColumn = State.Column - Current.ColumnWidth;
   if (Current.isStringLiteral()) {
     // FIXME: String literal breaking is currently disabled for C#, Java, Json
@@ -2116,9 +2128,10 @@ ContinuationIndenter::createBreakableToken(const FormatToken &Current,
       // only if certain other formatting decisions have been taken. The
       // UnbreakableTailLength of Current is an overapproximation is that case
       // and we need to be correct here.
-      unsigned UnbreakableTailLength = (State.NextToken && LanguageStyle.canBreak(State))
-                                           ? 0
-                                           : Current.UnbreakableTailLength;
+      unsigned UnbreakableTailLength =
+          (State.NextToken && LanguageStyle.canBreak(State))
+              ? 0
+              : Current.UnbreakableTailLength;
       return std::make_unique<BreakableStringLiteral>(
           Current, StartColumn, Prefix, Postfix, UnbreakableTailLength,
           State.Line->InPPDirective, Encoding, Style);
@@ -2160,6 +2173,7 @@ std::pair<unsigned, bool>
 ContinuationIndenter::breakProtrudingToken(const FormatToken &Current,
                                            LineState &State, bool AllowBreak,
                                            bool DryRun, bool Strict) {
+  const FormatStyle &Style = getStyle();
   std::unique_ptr<const BreakableToken> Token =
       createBreakableToken(Current, State, AllowBreak);
   if (!Token)

@@ -16,6 +16,5 @@
 #define DEBUG_TYPE "format-indenter"
 
 namespace clang {
-namespace format {
-} // namespace format
+namespace format {} // namespace format
 } // namespace clang
