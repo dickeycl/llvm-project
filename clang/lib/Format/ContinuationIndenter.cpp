@@ -129,12 +129,17 @@ static bool startsNextParameter(const FormatToken &Current,
   }
   if (Style.Language == FormatStyle::LK_Proto && Current.is(TT_SelectorName))
     return true;
+  if (Current.is(tok::comma) &&
+      (Style.AlignAfterOpenBracket == FormatStyle::BAS_BeforeComma))
+    return true;
   return Previous.is(tok::comma) && !Current.isTrailingComment() &&
          ((Previous.isNot(TT_CtorInitializerComma) ||
            Style.BreakConstructorInitializers !=
                FormatStyle::BCIS_BeforeComma) &&
           (Previous.isNot(TT_InheritanceComma) ||
-           Style.BreakInheritanceList != FormatStyle::BILS_BeforeComma));
+           Style.BreakInheritanceList != FormatStyle::BILS_BeforeComma) &&
+          (Previous.isNot(TT_ArgumentListComma) ||
+           Style.AlignAfterOpenBracket != FormatStyle::BAS_BeforeComma));
 }
 
 static bool opensProtoMessageField(const FormatToken &LessTok,
@@ -281,7 +286,11 @@ bool ContinuationIndenter::canBreak(const LineState &State) {
   const FormatToken &Previous = *Current.Previous;
   const auto &CurrentState = State.Stack.back();
   assert(&Previous == Current.Previous);
-  if (!Current.CanBreakBefore && !(CurrentState.BreakBeforeClosingBrace &&
+  // anything / }
+  // Unless we are putting every list element on a separate line, do not allow a break
+  // before the closing brace
+  if (!Current.CanBreakBefore && !((CurrentState.BreakBeforeClosingBrace ||
+                                    CurrentState.BreakBeforeSeparatorComma) &&
                                    Current.closesBlockOrBlockTypeList(Style))) {
     return false;
   }
@@ -702,6 +711,7 @@ void ContinuationIndenter::addTokenOnCurrentLine(LineState &State, bool DryRun,
   // break after the opening parenthesis. Don't break if it doesn't conserve
   // columns.
   if ((Style.AlignAfterOpenBracket == FormatStyle::BAS_AlwaysBreak ||
+       Style.AlignAfterOpenBracket == FormatStyle::BAS_BeforeComma ||
        Style.AlignAfterOpenBracket == FormatStyle::BAS_BlockIndent) &&
       (Previous.isOneOf(tok::l_paren, TT_TemplateOpener, tok::l_square) ||
        (Previous.is(tok::l_brace) && Previous.isNot(BK_Block) &&
@@ -791,8 +801,12 @@ void ContinuationIndenter::addTokenOnCurrentLine(LineState &State, bool DryRun,
     CurrentState.NestedBlockIndent = State.Column;
   } else if (!Current.isOneOf(tok::comment, tok::caret) &&
              ((Previous.is(tok::comma) &&
+               Style.AlignAfterOpenBracket != FormatStyle::BAS_BeforeComma &&
                !Previous.is(TT_OverloadedOperator)) ||
               (Previous.is(tok::colon) && Previous.is(TT_ObjCMethodExpr)))) {
+    // Operand after a comma separating function arguments, or after colon in ObjC.
+    // But in BAS_BeforeComma, any adjustment should have occurred at the comma,
+    // not after.
     CurrentState.LastSpace = State.Column;
   } else if (Previous.is(TT_CtorInitializerColon) &&
              (!Current.isTrailingComment() || Current.NewlinesBefore > 0) &&
@@ -1026,7 +1040,10 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
 
   if (PreviousNonComment && PreviousNonComment->is(tok::l_paren)) {
     CurrentState.BreakBeforeClosingParen =
-        Style.AlignAfterOpenBracket == FormatStyle::BAS_BlockIndent;
+        isAnyOf(Style.AlignAfterOpenBracket, FormatStyle::BAS_BlockIndent,
+                FormatStyle::BAS_BeforeComma);
+    CurrentState.BreakBeforeSeparatorComma =
+        Style.AlignAfterOpenBracket == FormatStyle::BAS_BeforeComma;
   }
 
   if (CurrentState.AvoidBinPacking) {
@@ -1133,7 +1150,8 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
        Current.Next->isOneOf(tok::semi, tok::kw_const, tok::l_brace))) {
     return State.Stack[State.Stack.size() - 2].LastSpace;
   }
-  if (Style.AlignAfterOpenBracket == FormatStyle::BAS_BlockIndent &&
+  if (isAnyOf(Style.AlignAfterOpenBracket, FormatStyle::BAS_BlockIndent,
+              FormatStyle::BAS_BeforeComma) &&
       Current.is(tok::r_paren) && State.Stack.size() > 1) {
     return State.Stack[State.Stack.size() - 2].LastSpace;
   }
@@ -1274,7 +1292,7 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
     return CurrentState.Indent;
   }
   if (Previous.is(tok::r_paren) && !Current.isBinaryOperator() &&
-      !Current.isOneOf(tok::colon, tok::comment)) {
+      !Current.isOneOf(tok::colon, tok::comment, tok::comma)) {
     return ContinuationIndent;
   }
   if (Current.is(TT_ProtoExtensionLSquare))

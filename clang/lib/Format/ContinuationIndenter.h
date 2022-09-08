@@ -204,6 +204,7 @@ struct ParenState {
       : Tok(Tok), Indent(Indent), LastSpace(LastSpace),
         NestedBlockIndent(Indent), IsAligned(false),
         BreakBeforeClosingBrace(false), BreakBeforeClosingParen(false),
+        BreakBeforeSeparatorComma(false),
         AvoidBinPacking(AvoidBinPacking), BreakBeforeParameter(false),
         NoLineBreak(NoLineBreak), NoLineBreakInOperand(false),
         LastOperatorWrapped(true), ContainsLineBreak(false),
@@ -283,6 +284,13 @@ struct ParenState {
   /// We only want to insert a newline before the closing paren if there also
   /// was a newline after the beginning left paren.
   bool BreakBeforeClosingParen : 1;
+
+  /// Whether a newline needs to be inserted before each separator comma
+  /// argument.
+  ///
+  /// We only insert a newline before each separator comma if there was
+  /// a newline after the beginning left paren.
+  bool BreakBeforeSeparatorComma : 1;
 
   /// Avoid bin packing, i.e. multiple parameters/elements on multiple
   /// lines, in this context.
@@ -371,6 +379,8 @@ struct ParenState {
       return BreakBeforeClosingBrace;
     if (BreakBeforeClosingParen != Other.BreakBeforeClosingParen)
       return BreakBeforeClosingParen;
+    if (BreakBeforeSeparatorComma != Other.BreakBeforeSeparatorComma)
+      return BreakBeforeSeparatorComma;
     if (QuestionColumn != Other.QuestionColumn)
       return QuestionColumn < Other.QuestionColumn;
     if (AvoidBinPacking != Other.AvoidBinPacking)

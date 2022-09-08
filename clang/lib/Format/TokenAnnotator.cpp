@@ -1232,6 +1232,12 @@ private:
       case Context::InheritanceList:
         Tok->setType(TT_InheritanceComma);
         break;
+      case Context::StructArrayInitializer:
+        Tok->setType(TT_ArgumentListComma);
+        break;
+      case Context::ArgumentList:
+        Tok->setType(TT_ArgumentListComma);
+        break;
       default:
         if (Contexts.back().FirstStartOfName &&
             (Contexts.size() == 1 || startsWithInitStatement(Line))) {
@@ -1590,6 +1596,8 @@ private:
     FormatToken *FirstObjCSelectorName = nullptr;
     FormatToken *FirstStartOfName = nullptr;
     bool CanBeExpression = true;
+    // A comma-separated list of arguments, parameters, or initializers
+    bool InCommaList = false;
     bool CaretFound = false;
     bool InCpp11AttributeSpecifier = false;
     bool InCSharpAttributeSpecifier = false;
@@ -1603,6 +1611,9 @@ private:
       // Like the inheritance list in a class declaration.
       //   class Input : public IO
       InheritanceList,
+      // Like an argument list
+      //   int f() or int (*pf)()
+      ArgumentList,
       // Like in the braced list.
       //   int x[] = {};
       StructArrayInitializer,
@@ -1740,6 +1751,16 @@ private:
       // But not operator !() (can't use TT_OverloadedOperator here as its not
       // been annotated yet).
       Contexts.back().IsExpression = true;
+    } else if (((Current.Previous && Current.Previous->is(tok::l_paren) &&
+                 Current.Previous->Previous &&
+                 Current.Previous->Previous->isOneOf(tok::identifier,
+                                                     tok::r_paren))) ||
+               (Current.Previous && Current.Previous->is(tok::l_brace))) {
+      // a left paren preceded by an identifier or a close paren is taken to
+      // start a comma-separated list (of arguments, parameters, or
+      // initializers)
+      // TODO: template brackets < and > should also be recognized.
+      Contexts.back().ContextType = Context::ArgumentList;
     }
   }
 
@@ -4693,6 +4714,21 @@ bool TokenAnnotator::mustBreakBefore(const AnnotatedLine &Line,
   return false;
 }
 
+namespace {
+  template<typename T, typename... V>
+  bool isOneOf(T t, V ... v);
+  template<typename T>
+  bool isOneOf(T)
+  {
+    return false;
+  }
+  template<typename T, typename... V>
+  bool isOneOf(T t, T v1, V ... v2)
+  {
+    return t == v1 || isOneOf(t, v2 ...);
+  }
+}
+
 bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
                                     const FormatToken &Right) const {
   const FormatToken &Left = *Right.Previous;
@@ -4800,6 +4836,7 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
       return true;
   }
 
+  // Language-independent stuff.
   if (Left.is(tok::at))
     return false;
   if (Left.Tok.getObjCKeywordID() == tok::objc_interface)
@@ -4906,8 +4943,10 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
                     TT_OverloadedOperator)) {
     return false;
   }
+  // for ( auto i : / c )
   if (Left.is(TT_RangeBasedForLoopColon))
     return true;
+  // for ( auto i / : c )
   if (Right.is(TT_RangeBasedForLoopColon))
     return false;
   if (Left.is(TT_TemplateCloser) && Right.is(TT_TemplateOpener))
@@ -4959,7 +4998,8 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
 
   // We only break before r_paren if we're in a block indented context.
   if (Right.is(tok::r_paren)) {
-    if (Style.AlignAfterOpenBracket != FormatStyle::BAS_BlockIndent ||
+    if (!isOneOf(Style.AlignAfterOpenBracket, FormatStyle::BAS_BlockIndent,
+                 FormatStyle::BAS_BeforeComma) ||
         !Right.MatchingParen) {
       return false;
     }
@@ -5007,6 +5047,16 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
       Style.BreakInheritanceList == FormatStyle::BILS_BeforeComma) {
     return true;
   }
+
+  if (Left.is(TT_ArgumentListComma) &&
+      Style.AlignAfterOpenBracket == FormatStyle::BAS_BeforeComma) {
+    return false;
+  }
+  if (Right.is(TT_ArgumentListComma) &&
+      Style.AlignAfterOpenBracket == FormatStyle::BAS_BeforeComma) {
+    return true;
+  }
+
   if (Left.is(TT_ArrayInitializerLSquare))
     return true;
   if (Right.is(tok::kw_typename) && Left.isNot(tok::kw_const))

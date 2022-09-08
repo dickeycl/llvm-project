@@ -95,6 +95,22 @@ struct FormatStyle {
     ///  Note: This currently only applies to parentheses.
     /// \endwarning
     BAS_BlockIndent,
+    /// Always break after an open bracket, if the parameters don't fit
+    /// on a single line. Arguments will be seprated by leading commas.
+    /// Closing brackets will be placed on a new line.
+    /// E.g.:
+    /// \code
+    ///   someLongFunction(
+    ///       argument1
+    ///       , argument2
+    ///       , argument3
+    ///   )
+    /// \endcode
+    ///
+    /// \warning
+    ///  Note: This currently only applies to parentheses.
+    /// \endwarning
+    BAS_BeforeComma,
   };
 
   /// If ``true``, horizontally aligns arguments after an open bracket.
