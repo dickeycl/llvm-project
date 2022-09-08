@@ -15,6 +15,7 @@
 #include "BreakableToken.h"
 #include "FormatInternal.h"
 #include "FormatToken.h"
+#include "IsAnyOf.h"
 #include "WhitespaceManager.h"
 #include "clang/Basic/OperatorPrecedence.h"
 #include "clang/Basic/SourceManager.h"
@@ -247,8 +248,7 @@ LineState ContinuationIndenter::getInitialState(unsigned FirstIndent,
   // since it's indented after the hash, but FirstIndent is set to the
   // preprocessor indent.
   if (Style.IndentPPDirectives == FormatStyle::PPDIS_AfterHash &&
-      (Line->Type == LT_PreprocessorDirective ||
-       Line->Type == LT_ImportStatement)) {
+      isAnyOf(Line->Type, LT_PreprocessorDirective, LT_ImportStatement)) {
     State.Column = 0;
   }
   State.Line = Line;
